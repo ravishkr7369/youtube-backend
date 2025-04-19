@@ -26,6 +26,8 @@ export const jwtVerify = asyncHandler(async (req, _, next) => {
 	
 		req.user = user;
 		
+
+		
 		next();
 	}
 	catch (error) {

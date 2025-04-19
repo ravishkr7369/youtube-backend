@@ -4,6 +4,8 @@ import { uploadOnCloudinary } from '../utils/cloudinary.js'
 import { ApiResponse } from '../utils/ApiResponse.js'
 import User from '../models/user.model.js';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+
 
 const AccessAndRefreshToken = async (userId) => {
 	const user = await User.findById(userId);
@@ -142,9 +144,8 @@ const userLogout = asyncHandler(async (req, res) => {
 	try {
 		await User.findByIdAndUpdate(req.user._id,
 			{
-				$set: {
-					refreshToken: undefined
-
+				$unset: {
+					refreshToken: 1
 				}
 			},
 			{
@@ -189,7 +190,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 			throw new ApiError(404, "Invalid refresh token")
 		}
 
-		console.log(user.refreshToken + " " + incomingRefreshToken)
+		//console.log(user.refreshToken + " " + incomingRefreshToken)
 		if (user?.refreshToken !== incomingRefreshToken) {
 			throw new ApiError(401, "Refresh token is expired or used")
 		}
@@ -222,6 +223,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
 const changeOldPassword = asyncHandler(async (req, res) => {
 	const { oldPassword, newPassword } = req.body;
+
+	//console.log(oldPassword, newPassword)
 	try {
 		if (!oldPassword || !newPassword) {
 			throw new ApiError(400, "All fields are required")
@@ -252,12 +255,15 @@ const currentUser = asyncHandler(async (req, res) => {
 
 const updateUserDetails = asyncHandler(async (req, res) => {
 
+
 	const { fullName, email } = req.body;
 	try {
+
 
 		if (!fullName || !email) {
 			throw new ApiError(400, "All fields are required")
 		}
+
 
 		const user = await User.findByIdAndUpdate(req.user?._id,
 			{
@@ -272,6 +278,7 @@ const updateUserDetails = asyncHandler(async (req, res) => {
 			{ new: true },
 		).select("-password -refreshToken -__v -createdAt -updatedAt");
 
+
 		return res
 			.status(200)
 			.json(new ApiResponse(200, user, "User details updated successfully"))
@@ -283,11 +290,13 @@ const updateUserDetails = asyncHandler(async (req, res) => {
 
 const updateUserAvatar = asyncHandler(async (req, res) => {
 	const avatarLocalPath = req.file?.path;
+	//console.log(req.file)
 	if (!avatarLocalPath) {
 		throw new ApiError(400, "Avatar file is missing")
 	}
 	try {
 		const avatar = await uploadOnCloudinary(avatarLocalPath);
+		// console.log(avatar.url)
 		if (!avatar.url) {
 			throw new ApiError(400, "Error uploading avatar to cloudinary")
 		}
@@ -350,15 +359,21 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 })
 
 
+
 const getUserChannelProfile = asyncHandler(async (req, res) => {
 	const { username } = req.params;
 	if (!username.trim()) {
-		throw new ApiError(400, "Username is missing")
+		throw new ApiError(400, "Username is missing");
 	}
 
 	try {
-		const channel = await user.aggregate([
-			{ $match: { username: username?.toLowerCase() } },
+		// console.log(req.user._id)
+		const currentUserId = req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : null;
+		// console.log(currentUserId);
+	
+
+		const channel = await User.aggregate([
+			{ $match: { username: username.toLowerCase() } },
 			{
 				$lookup: {
 					from: "subscriptions",
@@ -373,29 +388,15 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
 					localField: "_id",
 					foreignField: "subscriber",
 					as: "subscribedTo"
-
 				}
 			},
 			{
 				$addFields: {
-					subscribersCount: {
-						$size: "$subscribers"
-					},
-
-					channelsSubscribedToCount: {
-						$size: "$subscribedTo"
-					},
-
-					isSubscribed: {
-						$cond: {
-							if: { $in: [req.user?._id, "subscribers.subscriber"] },
-							then: true,
-							else: false
-						}
-					}
+					subscribersCount: { $size: "$subscribers" },
+					channelsSubscribedToCount: { $size: "$subscribedTo" }
+				
 				}
 			},
-
 			{
 				$project: {
 					username: 1,
@@ -405,25 +406,96 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
 					coverImage: 1,
 					subscribersCount: 1,
 					channelsSubscribedToCount: 1,
-					isSubscribed: 1,
+					subscribers: 1 // Keep this to check subscription in JS
 				}
 			}
-
-
-		])
+		]);
 
 		if (!channel?.length) {
-			throw new ApiError(404, "Channel not found")
+			throw new ApiError(404, "Channel not found");
 		}
 
-		return res
-			.status(200)
-			.json(new ApiResponse(200, channel[0], "User Channel fetched successfully"))
+		const channelData = channel[0];
+
+		
+		const isSubscribed = channelData.subscribers.some(sub => {
+			return sub.subscriber.toString() === currentUserId?.toString();
+		});
+
+		// Remove subscribers array before sending response
+		delete channelData.subscribers;
+
+		// console.log(channelData)
+		return res.status(200).json(new ApiResponse(200, {
+			...channelData,
+			isSubscribed
+		}, "User Channel fetched successfully"));
 	} catch (error) {
-		throw new ApiError(500, "Something went wrong while fetching channel profile")
+		console.error("Error fetching channel profile:", error);
+		throw new ApiError(500, "Something went wrong while fetching channel profile");
 	}
+});
+
+
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+	const user = await User.aggregate([
+		{ $match: { _id: new mongoose.Types.ObjectId(req.user?._id) } },
+		{
+			$lookup: {
+				from: "videos",
+				localField: "watchHistory",
+				foreignField: "_id",
+				as: "watchHistory",
+				pipeline: [{
+					$lookup: {
+						from: "users",
+						localField: "user",
+						foreignField: "_id",
+						as: "owner",
+						pipeline: [{
+							$project: {
+								username: 1,
+								fullName: 1,
+								avatar: 1
+							}
+						}]
+					}
+				}, {
+					$addFields: {
+						owner: {
+							$first: "$owner"
+						}
+					}
+				}]
+			}
+		},
+
+	])
+
+	return res
+		.status(200)
+		.json(
+			new ApiResponse(
+				200,
+				user[0].watchHistory,
+				"Watch history fetched successfully"
+			)
+		)
 
 })
 
 
-export { userRegister, userLogin, userLogout, refreshAccessToken, changeOldPassword, currentUser, updateUserDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfile }
+export {
+	userRegister,
+	userLogin,
+	userLogout,
+	refreshAccessToken,
+	changeOldPassword,
+	currentUser,
+	updateUserDetails,
+	updateUserAvatar,
+	updateUserCoverImage,
+	getUserChannelProfile,
+	getWatchHistory
+}
