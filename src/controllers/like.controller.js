@@ -7,6 +7,7 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
 
+//✅
 const toggleVideoLike = asyncHandler(async (req, res) => {
 	const { videoId } = req.params;
 
@@ -57,6 +58,7 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
 });
 
 
+//✅
 const toggleCommentLike = asyncHandler(async (req, res) => {
 	const { commentId } = req.params;
 	const { _id } = req.user;
@@ -95,28 +97,29 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
 });
 
 
+
+//❌
 const toggleTweetLike = asyncHandler(async (req, res) => {
 	const { tweetId } = req.params
 	//TODO: toggle like on tweet
 }
 )
 
+
+
+//✅
 const getLikedVideos = asyncHandler(async (req, res) => {
 	//TODO: get all liked videos
 
 	const { _id } = req.user
 
-	const likedVideos = await Like.find({ likedBy: _id })
+	const likedVideos = await Like.find({ likedBy: _id, video: { $exists: true } })
 		.populate("video", "title thumbnail")
 		.select("-_id -__v -likedBy")
-		.sort({ createdAt: 1 })
+		.sort({ createdAt: -1 });
 
+	const likedVideosCnt = await Like.countDocuments({ likedBy: _id, video: { $exists: true } });
 
-		
-
-
-	const likedVideosCnt = await Like.countDocuments({ likedBy: _id })
-	
 
 	return res.status(200).json(
 		new ApiResponse(200, { likedVideos, likedVideosCnt }, "Liked videos fetched successfully")

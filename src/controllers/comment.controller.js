@@ -5,6 +5,8 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
+
+//✅
 const getVideoComments = asyncHandler(async (req, res) => {
 	//TODO: get all comments for a video
 	const { videoId } = req.params
@@ -25,7 +27,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
 		.populate("owner", "username avatar")
 		.skip((page - 1) * limit)
 		.limit(limit)
-		.sort({ createdAt: 1 })
+		.sort({ createdAt: -1 })
 
 		//console.log(comments)
 	 const totalComments = await Comment.countDocuments({ video: videoId })
@@ -42,6 +44,8 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
 })
 
+
+//✅
 const addComment = asyncHandler(async (req, res) => {
 	// TODO: add a comment to a video
 	const { videoId } = req.params
@@ -77,12 +81,60 @@ const addComment = asyncHandler(async (req, res) => {
 });
 
 
+
+//✅
 const updateComment = asyncHandler(async (req, res) => {
 	// TODO: update a comment
+	const { commentId } = req.params
+	const { _id } = req.user
+	const { text } = req.body
+
+	if (!mongoose.Types.ObjectId.isValid(commentId)) {
+		throw new ApiError(400, "Invalid comment ID")
+	}
+
+	const comment = await Comment.findById(commentId)
+	if (!comment) {
+		throw new ApiError(404, "Comment not found")
+	}
+
+	if (comment.owner.toString() !== _id.toString()) {
+		throw new ApiError(403, "You are not authorized to update this comment")
+	}
+
+	comment.content = text
+	await comment.save()
+
+	return res.status(200).json(
+		new ApiResponse(200, comment, "Comment updated successfully")
+	)
+
 })
 
+
+//✅
 const deleteComment = asyncHandler(async (req, res) => {
 	// TODO: delete a comment
+
+	const { commentId } = req.params
+	const { _id } = req.user
+	if (!mongoose.Types.ObjectId.isValid(commentId)) {
+		throw new ApiError(400, "Invalid comment ID")
+	}
+
+	const comment = await Comment.findById(commentId)
+	if (!comment) {
+		throw new ApiError(404, "Comment not found")
+	}
+	if( comment.owner.toString() !== _id.toString()) {
+		throw new ApiError(403, "You are not authorized to delete this comment")
+	}
+	await comment.deleteOne()
+
+	return res.status(200).json(
+		new ApiResponse(200, null, "Comment deleted successfully")
+	)
+
 })
 
 export {

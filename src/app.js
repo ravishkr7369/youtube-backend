@@ -19,6 +19,7 @@ import userRoutes from './routes/user.routes.js';
 import videoRoutes from './routes/video.route.js';
 import likeRoutes from './routes/like.routes.js';
 import commentRoutes from './routes/comment.route.js';
+import subscriptionRoutes from './routes/subscription.route.js';
 
 
 
@@ -26,5 +27,6 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/videos', videoRoutes);
 app.use('/api/v1/likes', likeRoutes);
 app.use("/api/v1/comments", commentRoutes)
+app.use("/api/v1/subscriptions", subscriptionRoutes)
 
 export {app}
